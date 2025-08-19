@@ -1,0 +1,437 @@
+# API Endpoints для CRM системы управления звонками
+
+## Базовый URL
+```
+http://localhost:3001/api
+```
+
+## Аутентификация
+Все запросы должны содержать заголовок авторизации:
+```
+Authorization: Bearer <token>
+```
+
+## 1. Звонки (Calls)
+
+### GET /api/calls
+Получить список звонков с пагинацией и фильтрацией
+
+**Query параметры:**
+- `page` (number) - номер страницы (по умолчанию 1)
+- `limit` (number) - количество записей на странице (по умолчанию 50)
+- `status` (string) - фильтр по статусу: incoming, accepted, rejected, missed, completed
+- `search` (string) - поиск по номеру телефона, имени клиента или заметкам
+- `date_from` (string) - дата начала периода (ISO format)
+- `date_to` (string) - дата окончания периода (ISO format)
+- `userId` (number) - ID пользователя для фильтрации звонков
+
+**Ответ:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "caller_number": "+7 (495) 123-45-67",
+      "receiver_number": "+7 (495) 987-65-43",
+      "status": "accepted",
+      "accepted_at": "2024-01-15T10:30:00Z",
+      "answered_at": "2024-01-15T10:30:05Z",
+      "ended_at": "2024-01-15T10:33:25Z",
+      "duration": 200,
+      "notes": "Клиент интересовался услугами",
+      "assigned_user_id": 1,
+      "answered_by_user_id": 1,
+      "caller_company_id": 5,
+      "customer_name": "Иван Петров",
+      "company": "ООО Технологии",
+      "email": "ivan@tech.ru",
+      "call_purpose": "sales",
+      "priority": "medium",
+      "is_on_hold": false,
+      "tags": ["новый клиент", "продажи"]
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 50,
+    "total": 150,
+    "pages": 3
+  }
+}
+```
+
+### GET /api/calls/:id
+Получить детальную информацию о звонке
+
+**Ответ:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "caller_number": "+7 (495) 123-45-67",
+    "receiver_number": "+7 (495) 987-65-43",
+    "status": "accepted",
+    "accepted_at": "2024-01-15T10:30:00Z",
+    "answered_at": "2024-01-15T10:30:05Z",
+    "ended_at": "2024-01-15T10:33:25Z",
+    "duration": 200,
+    "notes": "Детальные заметки о звонке",
+    "assigned_user_first_name": "Анна",
+    "assigned_user_last_name": "Иванова",
+    "answered_user_first_name": "Анна",
+    "answered_user_last_name": "Иванова",
+    "caller_company_name": "ООО Технологии",
+    "caller_company_inn": "1234567890",
+    "customer_name": "Иван Петров",
+    "customer_company": "ООО Технологии",
+    "customer_email": "ivan@tech.ru",
+    "customer_phone": "+7 (495) 123-45-67",
+    "call_purpose": "sales",
+    "priority": "medium",
+    "follow_up_date": "2024-01-20T14:00:00Z",
+    "outcome": "Договорились о встрече",
+    "recording_url": "https://example.com/recordings/call_1.mp3",
+    "tags": "новый клиент, продажи, встреча",
+    "transfer_count": 0
+  }
+}
+```
+
+### POST /api/calls
+Создать новый звонок (обычно вызывается автоматически при входящем звонке)
+
+**Body:**
+```json
+{
+  "caller_number": "+7 (495) 123-45-67",
+  "receiver_number": "+7 (495) 987-65-43",
+  "channel_id": "SIP/1001-00000001",
+  "assigned_user_id": 1,
+  "caller_company_id": 5
+}
+```
+
+### PUT /api/calls/:id
+Обновить информацию о звонке
+
+**Body:**
+```json
+{
+  "notes": "Обновленные заметки",
+  "customer_name": "Иван Петров",
+  "company": "ООО Технологии",
+  "email": "ivan@tech.ru",
+  "call_purpose": "sales",
+  "priority": "high",
+  "follow_up_date": "2024-01-20T14:00:00Z",
+  "outcome": "Успешная продажа",
+  "tags": ["клиент", "продажи", "успех"]
+}
+```
+
+## 2. Пользователи (Users)
+
+### GET /api/users/available
+Получить список доступных пользователей для перевода звонков
+
+**Ответ:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "first_name": "Анна",
+      "last_name": "Иванова",
+      "status": "online"
+    },
+    {
+      "id": 2,
+      "first_name": "Петр",
+      "last_name": "Сидоров",
+      "status": "online"
+    }
+  ]
+}
+```
+
+### GET /api/users/:id/phones
+Получить телефоны пользователя
+
+**Ответ:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "phone_number": "+7 (495) 987-65-43",
+      "phone_type": "work",
+      "is_primary": true
+    }
+  ]
+}
+```
+
+## 3. Компании (Companies)
+
+### GET /api/companies/by-phone/:phone
+Получить компанию по номеру телефона
+
+**Ответ:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 5,
+    "name_companies": "ООО Технологии",
+    "inn": "1234567890",
+    "status_companies": "active",
+    "phone_numbers": [
+      {
+        "phone_number": "+7 (495) 123-45-67",
+        "phone_type": "main",
+        "contact_person": "Иван Петров"
+      }
+    ]
+  }
+}
+```
+
+## 4. Активные звонки (Active Calls)
+
+### GET /api/calls/active
+Получить список активных звонков
+
+**Query параметры:**
+- `userId` (number) - фильтр по пользователю
+
+**Ответ:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "caller_number": "+7 (495) 123-45-67",
+      "receiver_number": "+7 (495) 987-65-43",
+      "status": "incoming",
+      "started_at": "2024-01-15T10:30:00Z",
+      "channel_id": "SIP/1001-00000001",
+      "is_muted": false,
+      "is_speaker_on": false,
+      "is_on_hold": false,
+      "assigned_user_first_name": "Анна",
+      "assigned_user_last_name": "Иванова"
+    }
+  ]
+}
+```
+
+## 5. Статистика (Statistics)
+
+### GET /api/statistics/overview
+Получить общую статистику звонков
+
+**Query параметры:**
+- `period` (string) - период: today, week, month, year
+- `date_from` (string) - дата начала периода
+- `date_to` (string) - дата окончания периода
+- `userId` (number) - статистика для конкретного пользователя
+
+**Ответ:**
+```json
+{
+  "success": true,
+  "data": {
+    "total_calls": 150,
+    "accepted_calls": 120,
+    "rejected_calls": 20,
+    "missed_calls": 10,
+    "active_calls": 2,
+    "avg_duration": 180,
+    "total_duration": 21600,
+    "conversion_rate": 0.8,
+    "total_hold_time": 300,
+    "transfer_count": 5
+  }
+}
+```
+
+### GET /api/statistics/users
+Получить статистику по пользователям
+
+**Ответ:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "user_id": 1,
+      "first_name": "Анна",
+      "last_name": "Иванова",
+      "total_calls": 25,
+      "accepted_calls": 20,
+      "rejected_calls": 3,
+      "missed_calls": 2,
+      "avg_duration": 195,
+      "total_duration": 3900
+    }
+  ]
+}
+```
+
+## WebSocket События
+
+### Подключение и аутентификация
+```javascript
+const socket = io('http://localhost:3001');
+
+// Аутентификация пользователя
+socket.emit('authenticate', {
+  userId: 1,
+  token: 'your-jwt-token'
+});
+
+socket.on('authenticated', (data) => {
+  console.log('Authenticated as user:', data.userId);
+});
+```
+
+### События от сервера:
+- `incoming-call` - новый входящий звонок
+- `call-answered` - звонок принят/отклонен
+- `call-ended` - звонок завершен
+- `active-calls` - обновление списка активных звонков
+- `call-notes-updated` - обновлены заметки к звонку
+- `call-hold-changed` - изменен статус ожидания
+- `incoming-transfer` - входящий перевод звонка
+- `transfer-initiated` - перевод инициирован
+
+### События к серверу:
+- `authenticate` - аутентификация пользователя
+- `answer-call` - ответить на звонок
+- `end-call` - завершить звонок
+- `update-call-notes` - обновить заметки
+- `hold-call` - поставить/снять с ожидания
+- `transfer-call` - перевести звонок
+
+### Примеры WebSocket событий:
+
+#### Входящий звонок
+```javascript
+socket.on('incoming-call', (call) => {
+  console.log('Incoming call:', call);
+  // call = {
+  //   id: 123,
+  //   caller_number: "+7 (495) 123-45-67",
+  //   receiver_number: "+7 (495) 987-65-43",
+  //   timestamp: "2024-01-15T10:30:00Z",
+  //   assigned_user_id: 1,
+  //   caller_company_id: 5
+  // }
+});
+```
+
+#### Ответ на звонок
+```javascript
+socket.emit('answer-call', {
+  callId: 123,
+  action: 'accept', // или 'reject'
+  initialData: {
+    customerName: 'Иван Петров',
+    company: 'ООО Технологии',
+    quickNotes: 'Звонок по поводу услуг'
+  }
+});
+```
+
+#### Перевод звонка
+```javascript
+socket.emit('transfer-call', {
+  callId: 123,
+  targetUserId: 2,
+  transferReason: 'Специалист по данному вопросу'
+});
+
+socket.on('incoming-transfer', (data) => {
+  console.log('Incoming transfer:', data);
+  // data = {
+  //   callId: 123,
+  //   call: { ... },
+  //   fromUser: 1,
+  //   transferReason: "Специалист по данному вопросу"
+  // }
+});
+```
+
+#### Постановка на ожидание
+```javascript
+socket.emit('hold-call', {
+  callId: 123,
+  isHold: true
+});
+
+socket.on('call-hold-changed', (data) => {
+  console.log('Hold status changed:', data);
+  // data = { callId: 123, isHold: true, userId: 1 }
+});
+```
+
+## Тестовый режим
+
+Для работы в тестовом режиме установите переменную окружения:
+```bash
+TEST_MODE=true
+```
+
+В тестовом режиме:
+- Все API запросы возвращают тестовые данные
+- WebSocket события работают, но не записываются в БД
+- Все операции логируются с префиксом `[TEST MODE]`
+- Можно тестировать на реальных звонках без записи в БД
+
+## Коды ошибок
+
+- `400` - Неверные параметры запроса
+- `401` - Не авторизован
+- `403` - Доступ запрещен
+- `404` - Ресурс не найден
+- `409` - Конфликт (например, звонок уже отвечен)
+- `500` - Внутренняя ошибка сервера
+
+## Формат ошибок
+```json
+{
+  "success": false,
+  "error": {
+    "code": "CALL_NOT_FOUND",
+    "message": "Звонок не найден",
+    "details": {}
+  }
+}
+```
+
+## Безопасность
+
+### JWT токены
+Все запросы должны содержать валидный JWT токен:
+```javascript
+const headers = {
+  'Authorization': `Bearer ${token}`,
+  'Content-Type': 'application/json'
+};
+```
+
+### Валидация данных
+Все входящие данные валидируются на сервере:
+- Номера телефонов проверяются по регулярному выражению
+- Текстовые поля санитизируются от XSS
+- SQL инъекции предотвращаются параметризованными запросами
+
+### Ограничения доступа
+- Пользователи видят только свои звонки
+- Переводы возможны только между авторизованными пользователями
+- Административные функции требуют соответствующих прав

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebSocket Test</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .status {
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
+      }
+      .connected {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .disconnected {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .log {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 10px;
+        height: 300px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      button {
+        padding: 10px 20px;
+        margin: 5px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      .test-btn {
+        background-color: #007bff;
+        color: white;
+      }
+      .auth-btn {
+        background-color: #28a745;
+        color: white;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🔌 WebSocket Test Client</h1>
+
+    <div id="status" class="status disconnected">❌ Не подключен</div>
+
+    <div>
+      <button class="auth-btn" onclick="authenticate()">
+        🔐 Аутентификация (ID: 1)
+      </button>
+      <button class="test-btn" onclick="testIncomingCall()">
+        📞 Тест входящего звонка
+      </button>
+    </div>
+
+    <h3>📋 Логи:</h3>
+    <div id="log" class="log"></div>
+
+    <script>
+      const socket = io("http://localhost:3771");
+      const statusDiv = document.getElementById("status");
+      const logDiv = document.getElementById("log");
+
+      function log(message) {
+        const time = new Date().toLocaleTimeString();
+        logDiv.innerHTML += `[${time}] ${message}\n`;
+        logDiv.scrollTop = logDiv.scrollHeight;
+        console.log(message);
+      }
+
+      function updateStatus(connected) {
+        if (connected) {
+          statusDiv.className = "status connected";
+          statusDiv.innerHTML = "✅ Подключен к серверу";
+        } else {
+          statusDiv.className = "status disconnected";
+          statusDiv.innerHTML = "❌ Не подключен";
+        }
+      }
+
+      // WebSocket события
+      socket.on("connect", () => {
+        log("✅ WebSocket подключен");
+        updateStatus(true);
+      });
+
+      socket.on("disconnect", () => {
+        log("❌ WebSocket отключен");
+        updateStatus(false);
+      });
+
+      socket.on("connect_error", (error) => {
+        log(`❌ Ошибка подключения: ${error.message}`);
+        updateStatus(false);
+      });
+
+      socket.on("authenticated", (data) => {
+        log(`✅ Аутентификация успешна: ${JSON.stringify(data)}`);
+      });
+
+      socket.on("incoming-call", (call) => {
+        log(`🎉 ПОЛУЧЕНО СОБЫТИЕ incoming-call!`);
+        log(`📞 Данные звонка: ${JSON.stringify(call, null, 2)}`);
+
+        // Показываем уведомление
+        if (Notification.permission === "granted") {
+          new Notification("Входящий звонок", {
+            body: `От: ${call.caller_number}\nНа: ${call.receiver_number}`,
+            icon: "📞",
+          });
+        }
+      });
+
+      function authenticate() {
+        log("🔐 Отправка аутентификации...");
+        socket.emit("authenticate", { userId: 1 });
+      }
+
+      function testIncomingCall() {
+        log("📞 Отправка тестового звонка...");
+        const testCall = {
+          id: Date.now(),
+          caller_number: "+7 (495) 123-45-67",
+          receiver_number: "777",
+          timestamp: new Date().toISOString(),
+          status: "incoming",
+          assigned_user_id: 1,
+          caller_company_name: "ООО Тестовая Компания",
+        };
+        socket.emit("incoming-call", testCall);
+      }
+
+      // Запрос разрешения на уведомления
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+
+      log("🚀 WebSocket тест клиент запущен");
+      log('💡 Нажмите "Аутентификация" для подключения');
+    </script>
+  </body>
+</html>

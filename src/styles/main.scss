@@ -1,0 +1,1605 @@
+// Основные стили для CRM системы управления звонками
+// Переменные
+$primary-color: #3b82f6;
+$primary-hover: #2563eb;
+$success-color: #10b981;
+$success-hover: #059669;
+$danger-color: #ef4444;
+$danger-hover: #dc2626;
+$warning-color: #f59e0b;
+$warning-hover: #d97706;
+$gray-50: #f9fafb;
+$gray-100: #f3f4f6;
+$gray-200: #e5e7eb;
+$gray-300: #d1d5db;
+$gray-400: #9ca3af;
+$gray-500: #6b7280;
+$gray-600: #4b5563;
+$gray-700: #374151;
+$gray-800: #1f2937;
+$gray-900: #111827;
+$white: #ffffff;
+
+// Миксины
+@mixin button-base {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+@mixin card {
+  background: $white;
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border: 1px solid $gray-200;
+}
+
+@mixin input-base {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid $gray-300;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: $primary-color;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+}
+
+// Анимации
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+// Основные стили
+.crm-app {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+// Header
+.crm-header {
+  background: $white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid $gray-200;
+
+  &__container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 4rem;
+  }
+
+  &__logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+
+    &-icon {
+      width: 2.5rem;
+      height: 2.5rem;
+      background: linear-gradient(135deg, $primary-color, #7c3aed);
+      border-radius: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: $white;
+    }
+
+    &-text {
+      h1 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: $gray-800;
+        margin: 0;
+      }
+
+      p {
+        font-size: 0.875rem;
+        color: $gray-500;
+        margin: 0;
+      }
+    }
+  }
+
+  &__controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      color: $white;
+
+      .phone {
+        color: $primary-color;
+        font-weight: 500;
+      }
+    }
+  }
+}
+
+// Кнопки
+.btn {
+  @include button-base;
+
+  &--primary {
+    background: $primary-color;
+    color: $white;
+
+    &:hover {
+      background: $primary-hover;
+      transform: translateY(-1px);
+    }
+  }
+
+  &--success {
+    background: $success-color;
+    color: $white;
+
+    &:hover {
+      background: $success-hover;
+      transform: translateY(-1px);
+    }
+  }
+
+  &--danger {
+    background: $danger-color;
+    color: $white;
+
+    &:hover {
+      background: $danger-hover;
+      transform: translateY(-1px);
+    }
+  }
+
+  &--warning {
+    background: $warning-color;
+    color: $white;
+
+    &:hover {
+      background: $warning-hover;
+    }
+  }
+
+  &--secondary {
+    background: $gray-200;
+    color: $gray-800;
+
+    &:hover {
+      background: $gray-300;
+    }
+  }
+
+  &--small {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    border-radius: 9999px;
+  }
+
+  &--icon {
+    padding: 0.75rem;
+    border-radius: 50%;
+  }
+}
+
+// Статус индикаторы
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+
+  &--connected {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  &--disconnected {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  &--warning {
+    background: rgba(245, 158, 11, 0.1);
+    color: #d97706;
+  }
+
+  &--error {
+    background: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+    cursor: help;
+  }
+
+  &--test {
+    background: #fed7aa;
+    color: #9a3412;
+  }
+
+  &__dot {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+
+    &--green {
+      background: #10b981;
+    }
+
+    &--yellow {
+      background: #f59e0b;
+    }
+
+    &--red {
+      background: #dc2626;
+    }
+
+    &--orange {
+      background: #f97316;
+    }
+
+    &--pulse {
+      animation: pulse 2s infinite;
+    }
+  }
+}
+
+// Главный контент
+.main-content {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+// Статистические карточки
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stats-card {
+  @include card;
+  padding: 1.5rem;
+
+  &__content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  &__info {
+    p {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: $gray-600;
+      margin: 0 0 0.25rem 0;
+    }
+
+    .value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0;
+
+      &--primary {
+        color: $primary-color;
+      }
+      &--success {
+        color: $success-color;
+      }
+      &--warning {
+        color: $warning-color;
+      }
+      &--danger {
+        color: $danger-color;
+      }
+    }
+  }
+
+  &__icon {
+    width: 2rem;
+    height: 2rem;
+    color: $primary-color;
+  }
+}
+
+// История звонков
+.call-history {
+  @include card;
+  padding: 1.5rem;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: $gray-800;
+      margin: 0;
+    }
+
+    .count {
+      font-size: 0.875rem;
+      font-weight: 400;
+      color: $gray-500;
+    }
+  }
+
+  &__filters {
+    margin-bottom: 1.5rem;
+
+    .search-input {
+      position: relative;
+      margin-bottom: 1rem;
+
+      input {
+        @include input-base;
+        padding-left: 2.5rem;
+      }
+
+      .search-icon {
+        position: absolute;
+        left: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 1rem;
+        height: 1rem;
+        color: $gray-400;
+      }
+    }
+
+    .filter-buttons {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  &__empty {
+    text-align: center;
+    padding: 2rem;
+    color: $gray-500;
+
+    .icon {
+      width: 3rem;
+      height: 3rem;
+      margin: 0 auto 1rem;
+      color: $gray-300;
+    }
+  }
+}
+
+// Элемент звонка
+.call-item {
+  border: 1px solid $gray-200;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+  }
+
+  &--accepted {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+  }
+
+  &--rejected {
+    background: #fef2f2;
+    border-color: #fecaca;
+  }
+
+  &--missed {
+    background: #fffbeb;
+    border-color: #fed7aa;
+  }
+
+  &__content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  &__left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  &__avatar {
+    width: 2.5rem;
+    height: 2.5rem;
+    background: linear-gradient(135deg, $primary-color, #7c3aed);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: $white;
+  }
+
+  &__info {
+    .caller {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 500;
+      color: $gray-800;
+      margin-bottom: 0.25rem;
+    }
+
+    .receiver {
+      font-size: 0.875rem;
+      color: $gray-500;
+      margin-bottom: 0.25rem;
+    }
+
+    .notes {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+      color: $gray-600;
+      margin-bottom: 0.25rem;
+
+      .text {
+        max-width: 20rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .customer-info {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: $primary-color;
+      margin-bottom: 0.25rem;
+    }
+
+    .duration {
+      font-size: 0.75rem;
+      color: $gray-500;
+    }
+  }
+
+  &__recording {
+    margin-bottom: 0.5rem;
+
+    .recording-btn {
+      padding: 0.25rem 0.5rem;
+      background: $primary-color;
+      color: $white;
+      border: none;
+      border-radius: 0.25rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+
+      &:hover {
+        background: $primary-hover;
+      }
+
+      &.playing {
+        background: $danger-color;
+        animation: pulse 2s infinite;
+
+        &:hover {
+          background: $danger-hover;
+        }
+      }
+    }
+  }
+
+  &__right {
+    text-align: right;
+
+    .date {
+      font-size: 0.75rem;
+      color: $gray-500;
+      margin-bottom: 0.25rem;
+    }
+
+    .time {
+      font-size: 0.75rem;
+      color: $gray-500;
+      margin-bottom: 0.5rem;
+    }
+
+    .status {
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+
+      &--accepted {
+        color: #166534;
+        background: #dcfce7;
+      }
+
+      &--rejected {
+        color: #991b1b;
+        background: #fee2e2;
+      }
+
+      &--missed {
+        color: #92400e;
+        background: #fef3c7;
+      }
+    }
+  }
+}
+
+// Модальное окно звонка
+.call-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+
+  &__content {
+    background: $white;
+    border-radius: 1rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    padding: 2rem;
+    max-width: 28rem;
+    width: 100%;
+    margin: 1rem;
+    animation: slideUp 0.3s ease;
+  }
+
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: $gray-600;
+
+      .dot {
+        width: 0.75rem;
+        height: 0.75rem;
+        border-radius: 50%;
+
+        &--ringing {
+          background: $danger-color;
+          animation: pulse 1s infinite;
+        }
+
+        &--active {
+          background: $success-color;
+        }
+      }
+    }
+
+    .close-btn {
+      padding: 0.25rem;
+      background: none;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: background 0.2s ease;
+
+      &:hover {
+        background: $gray-100;
+      }
+    }
+  }
+
+  &__caller {
+    text-align: center;
+    margin-bottom: 2rem;
+
+    .avatar {
+      width: 5rem;
+      height: 5rem;
+      background: linear-gradient(135deg, $primary-color, #7c3aed);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1rem;
+      color: $white;
+      animation: pulse 2s infinite;
+
+      .ringing-icon {
+        animation: pulse 1s infinite;
+      }
+    }
+
+    .number {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: $gray-800;
+      margin-bottom: 0.5rem;
+    }
+
+    .company {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      color: $gray-600;
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+
+    .receiver {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      color: $gray-600;
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .duration {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      color: $gray-500;
+      font-size: 0.875rem;
+    }
+  }
+
+  &__form {
+    margin-bottom: 1.5rem;
+
+    .form-group {
+      margin-bottom: 0.75rem;
+
+      label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: $gray-700;
+        margin-bottom: 0.25rem;
+      }
+
+      input,
+      textarea {
+        @include input-base;
+      }
+
+      textarea {
+        resize: none;
+        height: 4rem;
+      }
+    }
+  }
+
+  &__info {
+    margin-bottom: 1.5rem;
+
+    .info-message {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 1rem;
+      background: linear-gradient(135deg, #dbeafe, #e0e7ff);
+      border: 1px solid #bfdbfe;
+      border-radius: 0.75rem;
+      color: $gray-700;
+
+      svg {
+        color: $primary-color;
+        flex-shrink: 0;
+        margin-top: 0.125rem;
+      }
+
+      div {
+        strong {
+          display: block;
+          font-weight: 600;
+          margin-bottom: 0.25rem;
+          color: $gray-800;
+        }
+
+        p {
+          margin: 0;
+          font-size: 0.875rem;
+          line-height: 1.4;
+          color: $gray-600;
+        }
+      }
+    }
+  }
+
+  &__actions {
+    display: flex;
+    gap: 1rem;
+
+    .btn {
+      flex: 1;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.75rem;
+      font-weight: 500;
+      transform: none;
+
+      &:hover {
+        transform: scale(1.02);
+      }
+
+      &:focus {
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+      }
+    }
+  }
+
+  &__footer {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid $gray-100;
+    text-align: center;
+    font-size: 0.75rem;
+    color: $gray-500;
+  }
+}
+
+// Активная карточка звонка
+.active-call-card {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  width: 24rem;
+  background: $white;
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border: 1px solid $gray-200;
+  z-index: 1000;
+  animation: slideUp 0.3s ease;
+
+  &__header {
+    background: linear-gradient(135deg, $success-color, #059669);
+    color: $white;
+    padding: 1rem;
+    border-radius: 1rem 1rem 0 0;
+
+    .status {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+
+      .indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+
+        .dot {
+          width: 0.75rem;
+          height: 0.75rem;
+          background: $white;
+          border-radius: 50%;
+          opacity: 0.8;
+          animation: pulse 2s infinite;
+
+          &--completed {
+            background: $gray-400;
+            animation: none;
+          }
+        }
+      }
+
+      .duration {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        font-family: monospace;
+      }
+    }
+
+    .caller-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+
+      .avatar {
+        width: 3rem;
+        height: 3rem;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .info {
+        .number {
+          font-weight: 600;
+          font-size: 1.125rem;
+          margin-bottom: 0.25rem;
+        }
+
+        .receiver {
+          color: rgba(255, 255, 255, 0.8);
+          font-size: 0.875rem;
+        }
+      }
+    }
+  }
+
+  &__controls {
+    padding: 1rem;
+    border-bottom: 1px solid $gray-100;
+
+    .control-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+
+      .control-btn {
+        padding: 0.75rem;
+        border-radius: 50%;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        &:active:not(:disabled) {
+          transform: scale(0.95);
+        }
+
+        &--mute {
+          background: $gray-100;
+          color: $gray-600;
+
+          &:hover {
+            background: $gray-200;
+          }
+
+          &.active {
+            background: #fee2e2;
+            color: $danger-color;
+          }
+        }
+
+        &--speaker {
+          background: $gray-100;
+          color: $gray-600;
+
+          &:hover {
+            background: $gray-200;
+          }
+
+          &.active {
+            background: #dbeafe;
+            color: $primary-color;
+          }
+        }
+
+        &--end {
+          background: $danger-color;
+          color: $white;
+
+          &:hover {
+            background: $danger-hover;
+          }
+        }
+
+        &--hold {
+          background: $warning-color;
+          color: $white;
+
+          &:hover {
+            background: $warning-hover;
+          }
+
+          &.active {
+            background: #f97316;
+            animation: pulse 2s infinite;
+          }
+        }
+
+        &--transfer {
+          background: $primary-color;
+          color: $white;
+
+          &:hover {
+            background: $primary-hover;
+          }
+        }
+      }
+    }
+  }
+
+  &__hold-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: #fef3c7;
+    color: #92400e;
+    font-weight: 500;
+    font-size: 0.875rem;
+    animation: pulse 2s infinite;
+  }
+
+  &__form {
+    padding: 1rem;
+    max-height: 24rem;
+    overflow-y: auto;
+
+    .form-section {
+      margin-bottom: 1rem;
+
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .form-group {
+        margin-bottom: 0.75rem;
+
+        label {
+          display: block;
+          font-size: 0.75rem;
+          font-weight: 500;
+          color: $gray-700;
+          margin-bottom: 0.25rem;
+        }
+
+        input,
+        select,
+        textarea {
+          width: 100%;
+          padding: 0.5rem;
+          border: 1px solid $gray-300;
+          border-radius: 0.5rem;
+          font-size: 0.875rem;
+          transition: all 0.2s ease;
+
+          &:focus {
+            outline: none;
+            border-color: $primary-color;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+          }
+        }
+
+        textarea {
+          resize: none;
+          height: 5rem;
+        }
+      }
+
+      .priority-select {
+        select {
+          &[value="low"] {
+            color: $success-color;
+          }
+          &[value="medium"] {
+            color: $warning-color;
+          }
+          &[value="high"] {
+            color: $danger-color;
+          }
+        }
+      }
+
+      .tags-input {
+        .tags-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.25rem;
+          margin-bottom: 0.5rem;
+
+          .tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            background: #dbeafe;
+            color: $primary-color;
+            font-size: 0.75rem;
+            border-radius: 9999px;
+
+            .remove-btn {
+              margin-left: 0.25rem;
+              background: none;
+              border: none;
+              color: $primary-color;
+              cursor: pointer;
+              font-weight: bold;
+
+              &:hover {
+                color: $primary-hover;
+              }
+            }
+          }
+        }
+
+        .tag-input-row {
+          display: flex;
+          gap: 0.5rem;
+
+          input {
+            flex: 1;
+          }
+
+          .add-btn {
+            padding: 0.5rem 0.75rem;
+            background: $primary-color;
+            color: $white;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background 0.2s ease;
+
+            &:hover {
+              background: $primary-hover;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  &__footer {
+    padding: 1rem;
+    border-top: 1px solid $gray-100;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    .footer-buttons {
+      display: flex;
+      gap: 0.5rem;
+
+      .save-btn {
+        flex: 1;
+        padding: 0.75rem;
+        background: $primary-color;
+        color: $white;
+        border: none;
+        border-radius: 0.5rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+
+        &:hover {
+          background: $primary-hover;
+          transform: translateY(-1px);
+        }
+
+        &:active {
+          transform: translateY(0);
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          transform: none;
+        }
+      }
+
+      .close-btn {
+        flex: 1;
+        padding: 0.75rem;
+        background: $success-color;
+        color: $white;
+        border: none;
+        border-radius: 0.5rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+
+        &:hover {
+          background: $success-hover;
+          transform: translateY(-1px);
+        }
+
+        &:active {
+          transform: translateY(0);
+        }
+      }
+    }
+
+    .save-info {
+      text-align: center;
+
+      small {
+        color: $gray-500;
+        font-size: 0.75rem;
+      }
+    }
+  }
+}
+
+// Transfer Modal
+.transfer-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+  animation: fadeIn 0.3s ease;
+
+  &__content {
+    background: $white;
+    border-radius: 1rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    padding: 1.5rem;
+    max-width: 24rem;
+    width: 100%;
+    margin: 1rem;
+    animation: slideUp 0.3s ease;
+  }
+
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+
+    h3 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: $gray-800;
+      margin: 0;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      color: $gray-400;
+      cursor: pointer;
+      padding: 0.25rem;
+
+      &:hover {
+        color: $gray-600;
+      }
+    }
+  }
+
+  &__form {
+    margin-bottom: 1rem;
+
+    .form-group {
+      margin-bottom: 1rem;
+
+      label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: $gray-700;
+        margin-bottom: 0.5rem;
+      }
+
+      select,
+      textarea {
+        @include input-base;
+      }
+
+      textarea {
+        height: 4rem;
+        resize: none;
+      }
+    }
+  }
+
+  &__actions {
+    display: flex;
+    gap: 0.75rem;
+
+    .btn {
+      flex: 1;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      font-weight: 500;
+    }
+  }
+}
+
+// Детали звонка
+.call-details {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+
+  &__content {
+    background: $white;
+    border-radius: 1rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    padding: 2rem;
+    max-width: 32rem;
+    width: 100%;
+    margin: 1rem;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: slideUp 0.3s ease;
+  }
+
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: $gray-800;
+      margin: 0;
+    }
+
+    .close-btn {
+      padding: 0.5rem;
+      background: none;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: background 0.2s ease;
+
+      &:hover {
+        background: $gray-100;
+      }
+    }
+  }
+
+  &__caller-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: $gray-50;
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+
+    .avatar {
+      width: 4rem;
+      height: 4rem;
+      background: linear-gradient(135deg, $primary-color, #7c3aed);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: $white;
+    }
+
+    .info {
+      .number {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: $gray-800;
+        margin-bottom: 0.25rem;
+      }
+
+      .receiver {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: $gray-600;
+        font-size: 0.875rem;
+      }
+    }
+  }
+
+  &__stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+
+    .stat-card {
+      padding: 1rem;
+      background: $gray-50;
+      border-radius: 0.5rem;
+
+      .label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: $gray-700;
+        margin-bottom: 0.5rem;
+      }
+
+      .value {
+        color: $gray-800;
+        font-size: 0.875rem;
+      }
+
+      .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+        font-weight: 500;
+
+        &--accepted {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        &--rejected {
+          background: #fee2e2;
+          color: #991b1b;
+        }
+
+        &--missed {
+          background: #fef3c7;
+          color: #92400e;
+        }
+      }
+    }
+  }
+
+  &__customer-info {
+    margin-bottom: 1.5rem;
+    padding: 0.75rem;
+    background: #dbeafe;
+    border-radius: 0.5rem;
+
+    .name {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #1e40af;
+      margin-bottom: 0.25rem;
+    }
+
+    .email {
+      font-size: 0.75rem;
+      color: #3730a3;
+    }
+  }
+
+  &__notes {
+    margin-bottom: 1.5rem;
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: $gray-700;
+      margin-bottom: 0.75rem;
+    }
+
+    textarea {
+      @include input-base;
+      resize: none;
+      height: 8rem;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    gap: 0.75rem;
+
+    .btn {
+      flex: 1;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: 500;
+    }
+  }
+}
+
+// Адаптивность
+@media (max-width: 768px) {
+  .crm-header {
+    &__container {
+      padding: 0 0.5rem;
+      flex-direction: column;
+      height: auto;
+      padding-top: 1rem;
+      padding-bottom: 1rem;
+      gap: 1rem;
+    }
+
+    &__controls {
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+  }
+
+  .main-content {
+    padding: 1rem 0.5rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+
+  .call-item {
+    &__content {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+
+    &__right {
+      text-align: left;
+      width: 100%;
+    }
+  }
+
+  .call-modal {
+    &__content {
+      margin: 0.5rem;
+      padding: 1.5rem;
+    }
+
+    &__actions {
+      flex-direction: column;
+    }
+  }
+
+  .active-call-card {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    border-radius: 0;
+
+    &__controls {
+      .control-buttons {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+    }
+
+    &__form {
+      max-height: 50vh;
+    }
+  }
+
+  .transfer-modal {
+    &__content {
+      margin: 0.5rem;
+      padding: 1rem;
+    }
+  }
+
+  .call-details {
+    &__content {
+      margin: 0.5rem;
+      padding: 1.5rem;
+    }
+
+    &__stats {
+      grid-template-columns: 1fr;
+    }
+
+    &__actions {
+      flex-direction: column;
+    }
+  }
+}
+
+// Утилиты
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.3s ease;
+}
+
+.animate-pulse {
+  animation: pulse 2s infinite;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

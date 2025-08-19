@@ -1,0 +1,381 @@
+# База данных для CRM системы управления звонками
+
+## Основные таблицы системы
+
+### Таблица: users (пользователи системы)
+```sql
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    role_id INTEGER REFERENCES roles(id) ON DELETE SET NULL,
+    position_id INTEGER REFERENCES positions(id) ON DELETE SET NULL,
+    first_name VARCHAR(30),
+    middle_name VARCHAR(30),
+    last_name VARCHAR(30),
+    birth_date DATE,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    email_token VARCHAR(200),
+    avatar_url VARCHAR(200),
+    user_photo BYTEA,
+    role_assigned BOOLEAN DEFAULT false,
+    supervisor_id INTEGER,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    department_id INTEGER,
+    status VARCHAR(10) DEFAULT 'offline',        -- online, offline, busy, away
+    gender VARCHAR(15) DEFAULT 'не установлен'
+);
+```
+
+### Таблица: user_phones (телефоны пользователей)
+```sql
+CREATE TABLE user_phones (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    phone_number VARCHAR(20) NOT NULL,           -- Номер телефона пользователя
+    phone_type VARCHAR(20) NOT NULL,             -- mobile, work, home, extension
+    is_primary BOOLEAN DEFAULT FALSE,            -- Основной номер
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Таблица: companies (компании)
+```sql
+CREATE TABLE companies (
+    id SERIAL PRIMARY KEY,
+    name_companies VARCHAR(255) NOT NULL UNIQUE,
+    status_companies VARCHAR(50),
+    seller_code VARCHAR(50),
+    inn VARCHAR(12) UNIQUE,
+    trade_brand VARCHAR(255),
+    regional_manager_id INTEGER REFERENCES users(id),
+    mpp_id INTEGER REFERENCES users(id),
+    mpr_id INTEGER REFERENCES users(id),
+    has_availability BOOLEAN DEFAULT FALSE,
+    has_warehouse BOOLEAN DEFAULT FALSE,
+    document_transfer_department VARCHAR(255),
+    is_self_service BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    telegram_password VARCHAR(255) NOT NULL DEFAULT 'NOTACCES'
+);
+```
+
+### Таблица: phone_numbers_companies (телефоны компаний)
+```sql
+CREATE TABLE phone_numbers_companies (
+    id SERIAL PRIMARY KEY,
+    company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+    phone_number VARCHAR(20) NOT NULL,           -- Номер телефона компании
+    phone_type VARCHAR(20) DEFAULT 'main',       -- main, fax, mobile, support
+    contact_person VARCHAR(255),                 -- Контактное лицо
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+## Таблицы для управления звонками
+
+### Таблица: calls (основная таблица звонков)
+```sql
+CREATE TABLE calls (
+    id SERIAL PRIMARY KEY,
+    caller_number VARCHAR(20) NOT NULL,           -- Номер звонящего
+    receiver_number VARCHAR(20) NOT NULL,         -- Номер получателя
+    status VARCHAR(20) NOT NULL DEFAULT 'incoming', -- incoming, accepted, rejected, missed, completed
+    accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- Время поступления звонка
+    answered_at TIMESTAMP NULL,                   -- Время ответа на звонок
+    ended_at TIMESTAMP NULL,                      -- Время завершения звонка
+    duration INTEGER DEFAULT 0,                   -- Длительность в секундах
+    notes TEXT,                                   -- Заметки о звонке
+    assigned_user_id INTEGER REFERENCES users(id), -- Назначенный пользователь
+    answered_by_user_id INTEGER REFERENCES users(id), -- Кто ответил на звонок
+    caller_company_id INTEGER REFERENCES companies(id), -- Компания звонящего
+    channel_id VARCHAR(100),                      -- ID канала Asterisk
+    recording_url VARCHAR(500),                   -- URL записи звонка
+    is_on_hold BOOLEAN DEFAULT FALSE,             -- Звонок на ожидании
+    hold_started_at TIMESTAMP NULL,               -- Время постановки на ожидание
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Таблица: call_participants (участники звонка)
+```sql
+CREATE TABLE call_participants (
+    id SERIAL PRIMARY KEY,
+    call_id INTEGER REFERENCES calls(id) ON DELETE CASCADE,
+    customer_name VARCHAR(255),                   -- Имя клиента
+    company VARCHAR(255),                         -- Компания клиента
+    email VARCHAR(255),                           -- Email клиента
+    phone VARCHAR(20),                            -- Дополнительный телефон
+    address TEXT,                                 -- Адрес клиента
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Таблица: call_tags (теги для звонков)
+```sql
+CREATE TABLE call_tags (
+    id SERIAL PRIMARY KEY,
+    call_id INTEGER REFERENCES calls(id) ON DELETE CASCADE,
+    tag_name VARCHAR(100) NOT NULL,               -- Название тега
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Таблица: call_metadata (дополнительные данные звонка)
+```sql
+CREATE TABLE call_metadata (
+    id SERIAL PRIMARY KEY,
+    call_id INTEGER REFERENCES calls(id) ON DELETE CASCADE,
+    call_purpose VARCHAR(100),                    -- sales, support, consultation, complaint, other
+    priority VARCHAR(20) DEFAULT 'medium',        -- low, medium, high
+    follow_up_date TIMESTAMP NULL,                -- Дата следующего контакта
+    outcome VARCHAR(255),                         -- Результат звонка
+    recording_url VARCHAR(500),                   -- URL записи звонка
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Таблица: call_transfers (переводы звонков)
+```sql
+CREATE TABLE call_transfers (
+    id SERIAL PRIMARY KEY,
+    call_id INTEGER REFERENCES calls(id) ON DELETE CASCADE,
+    from_user_id INTEGER REFERENCES users(id),   -- От кого переводится
+    to_user_id INTEGER REFERENCES users(id),     -- Кому переводится
+    transfer_reason TEXT,                         -- Причина перевода
+    transferred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    accepted_at TIMESTAMP NULL,                   -- Время принятия перевода
+    status VARCHAR(20) DEFAULT 'pending'          -- pending, accepted, rejected
+);
+```
+
+### Таблица: active_calls (активные звонки)
+```sql
+CREATE TABLE active_calls (
+    id SERIAL PRIMARY KEY,
+    call_id INTEGER REFERENCES calls(id) ON DELETE CASCADE,
+    channel_id VARCHAR(100),                      -- ID канала Asterisk
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_muted BOOLEAN DEFAULT FALSE,               -- Микрофон отключен
+    is_speaker_on BOOLEAN DEFAULT FALSE,          -- Динамик включен
+    is_on_hold BOOLEAN DEFAULT FALSE,             -- На ожидании
+    hold_duration INTEGER DEFAULT 0,              -- Время на ожидании (сек)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+## Индексы для оптимизации производительности
+
+```sql
+-- Основные индексы для таблицы calls
+CREATE INDEX idx_calls_status ON calls(status);
+CREATE INDEX idx_calls_caller_number ON calls(caller_number);
+CREATE INDEX idx_calls_receiver_number ON calls(receiver_number);
+CREATE INDEX idx_calls_accepted_at ON calls(accepted_at);
+CREATE INDEX idx_calls_assigned_user_id ON calls(assigned_user_id);
+CREATE INDEX idx_calls_answered_by_user_id ON calls(answered_by_user_id);
+CREATE INDEX idx_calls_caller_company_id ON calls(caller_company_id);
+
+-- Индексы для пользователей и телефонов
+CREATE INDEX idx_users_status ON users(status);
+CREATE INDEX idx_user_phones_phone_number ON user_phones(phone_number);
+CREATE INDEX idx_user_phones_user_id ON user_phones(user_id);
+
+-- Индексы для компаний и их телефонов
+CREATE INDEX idx_companies_inn ON companies(inn);
+CREATE INDEX idx_phone_numbers_companies_phone_number ON phone_numbers_companies(phone_number);
+CREATE INDEX idx_phone_numbers_companies_company_id ON phone_numbers_companies(company_id);
+
+-- Индексы для связанных таблиц
+CREATE INDEX idx_call_participants_call_id ON call_participants(call_id);
+CREATE INDEX idx_call_tags_call_id ON call_tags(call_id);
+CREATE INDEX idx_call_metadata_call_id ON call_metadata(call_id);
+CREATE INDEX idx_call_transfers_call_id ON call_transfers(call_id);
+CREATE INDEX idx_call_transfers_from_user_id ON call_transfers(from_user_id);
+CREATE INDEX idx_call_transfers_to_user_id ON call_transfers(to_user_id);
+CREATE INDEX idx_active_calls_call_id ON active_calls(call_id);
+```
+
+## Представления (Views) для удобства работы
+
+```sql
+-- Полная информация о звонке с данными пользователей и компаний
+CREATE VIEW call_details_full AS
+SELECT 
+    c.*,
+    -- Информация о назначенном пользователе
+    u_assigned.first_name as assigned_user_first_name,
+    u_assigned.last_name as assigned_user_last_name,
+    -- Информация о пользователе, который ответил
+    u_answered.first_name as answered_user_first_name,
+    u_answered.last_name as answered_user_last_name,
+    -- Информация о компании звонящего
+    comp.name_companies as caller_company_name,
+    comp.inn as caller_company_inn,
+    -- Информация об участнике звонка
+    cp.customer_name,
+    cp.company as customer_company,
+    cp.email as customer_email,
+    cp.phone as customer_phone,
+    cp.address as customer_address,
+    -- Метаданные звонка
+    cm.call_purpose,
+    cm.priority,
+    cm.follow_up_date,
+    cm.outcome,
+    cm.recording_url,
+    -- Теги
+    STRING_AGG(DISTINCT ct.tag_name, ', ') as tags,
+    -- Информация о переводах
+    COUNT(DISTINCT ctr.id) as transfer_count
+FROM calls c
+LEFT JOIN users u_assigned ON c.assigned_user_id = u_assigned.id
+LEFT JOIN users u_answered ON c.answered_by_user_id = u_answered.id
+LEFT JOIN companies comp ON c.caller_company_id = comp.id
+LEFT JOIN call_participants cp ON c.id = cp.call_id
+LEFT JOIN call_metadata cm ON c.id = cm.call_id
+LEFT JOIN call_tags ct ON c.id = ct.call_id
+LEFT JOIN call_transfers ctr ON c.id = ctr.call_id
+GROUP BY c.id, u_assigned.id, u_answered.id, comp.id, cp.id, cm.id;
+
+-- Статистика звонков по пользователям
+CREATE VIEW user_call_statistics AS
+SELECT 
+    u.id as user_id,
+    u.first_name,
+    u.last_name,
+    COUNT(c.id) as total_calls,
+    COUNT(CASE WHEN c.status = 'accepted' THEN 1 END) as accepted_calls,
+    COUNT(CASE WHEN c.status = 'rejected' THEN 1 END) as rejected_calls,
+    COUNT(CASE WHEN c.status = 'missed' THEN 1 END) as missed_calls,
+    AVG(c.duration) as avg_duration,
+    SUM(c.duration) as total_duration,
+    DATE(c.accepted_at) as call_date
+FROM users u
+LEFT JOIN calls c ON u.id = c.answered_by_user_id
+GROUP BY u.id, u.first_name, u.last_name, DATE(c.accepted_at)
+ORDER BY call_date DESC, total_calls DESC;
+
+-- Активные звонки с полной информацией
+CREATE VIEW active_calls_full AS
+SELECT 
+    c.*,
+    ac.channel_id,
+    ac.is_muted,
+    ac.is_speaker_on,
+    ac.is_on_hold,
+    ac.hold_duration,
+    u.first_name as assigned_user_first_name,
+    u.last_name as assigned_user_last_name,
+    comp.name_companies as caller_company_name
+FROM calls c
+JOIN active_calls ac ON c.id = ac.call_id
+LEFT JOIN users u ON c.assigned_user_id = u.id
+LEFT JOIN companies comp ON c.caller_company_id = comp.id
+WHERE c.status IN ('incoming', 'accepted');
+```
+
+## Триггеры для автоматического обновления
+
+```sql
+-- Функция для обновления updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Триггеры для автоматического обновления updated_at
+CREATE TRIGGER update_users_updated_at 
+    BEFORE UPDATE ON users 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_companies_updated_at 
+    BEFORE UPDATE ON companies 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_calls_updated_at 
+    BEFORE UPDATE ON calls 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_call_metadata_updated_at 
+    BEFORE UPDATE ON call_metadata 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Триггер для автоматического расчета длительности ожидания
+CREATE OR REPLACE FUNCTION calculate_hold_duration()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.is_on_hold = TRUE AND NEW.is_on_hold = FALSE THEN
+        -- Звонок снят с ожидания, обновляем длительность
+        UPDATE active_calls 
+        SET hold_duration = hold_duration + EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - NEW.hold_started_at))::INTEGER
+        WHERE call_id = NEW.id;
+    END IF;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER calculate_hold_duration_trigger
+    AFTER UPDATE ON calls
+    FOR EACH ROW EXECUTE FUNCTION calculate_hold_duration();
+```
+
+## Примеры полезных запросов
+
+### Получить все звонки пользователя с полной информацией
+```sql
+SELECT * FROM call_details_full 
+WHERE assigned_user_id = $1 
+ORDER BY accepted_at DESC 
+LIMIT 50;
+```
+
+### Найти пользователя по номеру телефона
+```sql
+SELECT u.*, up.phone_number, up.phone_type 
+FROM users u 
+JOIN user_phones up ON u.id = up.user_id 
+WHERE up.phone_number = $1;
+```
+
+### Получить компанию по номеру телефона
+```sql
+SELECT c.*, pnc.phone_number 
+FROM companies c 
+JOIN phone_numbers_companies pnc ON c.id = pnc.company_id 
+WHERE pnc.phone_number = $1;
+```
+
+### Статистика звонков за период
+```sql
+SELECT * FROM user_call_statistics 
+WHERE call_date >= CURRENT_DATE - INTERVAL '30 days'
+AND user_id = $1
+ORDER BY call_date DESC;
+```
+
+### Активные звонки пользователя
+```sql
+SELECT * FROM active_calls_full 
+WHERE assigned_user_id = $1;
+```
+
+## Настройки для тестового режима
+
+Для работы в тестовом режиме без записи в БД установите переменную окружения:
+```bash
+TEST_MODE=true
+```
+
+В этом режиме:
+- Все запросы к БД логируются, но не выполняются
+- Используются тестовые данные
+- Сохраняется полная функциональность для разработки
+- Можно тестировать на реальных звонках без засорения БД
