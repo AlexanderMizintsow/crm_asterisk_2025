@@ -246,23 +246,8 @@ io.on("connection", (socket) => {
       userId: userId,
     });
 
-    log.info("ОТЛАДКА: Ищем пользователя для номера", {
-      receiverNumber: data.receiver_number,
-    });
-
-    // Находим пользователя, которому принадлежит номер получателя
+        // Находим пользователя, которому принадлежит номер получателя
     const assignedUser = await getUserByPhone(data.receiver_number);
-
-    log.info("ОТЛАДКА: Результат поиска пользователя", {
-      receiverNumber: data.receiver_number,
-      assignedUser: assignedUser
-        ? {
-            id: assignedUser.id,
-            name: `${assignedUser.first_name} ${assignedUser.last_name}`,
-            phone: assignedUser.phone_number,
-          }
-        : null,
-    });
 
     if (!assignedUser) {
       log.warning("Пользователь не найден для номера", {
