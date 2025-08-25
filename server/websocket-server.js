@@ -70,7 +70,23 @@ io.on("connection", (socket) => {
         userId,
         name: `${user.first_name} ${user.last_name}`,
         phone: user.phone_number,
+        connectedClientsSize: connectedClients.size,
+        userSocketsSize: userSockets.size,
+        connectedClientsKeys: Array.from(connectedClients.keys()),
+        socketId: socket.id,
       });
+
+      // Проверяем, что пользователь действительно сохранен
+      setTimeout(() => {
+        log.info("Проверка сохранения пользователя", {
+          userId,
+          connectedClientsSize: connectedClients.size,
+          userSocketsSize: userSockets.size,
+          connectedClientsKeys: Array.from(connectedClients.keys()),
+          userSocketsEntries: Array.from(userSockets.entries()),
+          hasUser: connectedClients.has(userId),
+        });
+      }, 1000);
     } catch (error) {
       socket.emit("auth_error", { message: "Ошибка аутентификации" });
       log.error("Ошибка при аутентификации пользователя", error);
@@ -246,7 +262,7 @@ io.on("connection", (socket) => {
       userId: userId,
     });
 
-        // Находим пользователя, которому принадлежит номер получателя
+    // Находим пользователя, которому принадлежит номер получателя
     const assignedUser = await getUserByPhone(data.receiver_number);
 
     if (!assignedUser) {
@@ -328,6 +344,40 @@ io.on("connection", (socket) => {
       log.info(`Пользователь ${userId} отключился`, { socketId: socket.id });
     }
   });
+
+  // Обработка входящих звонков от asterisk-server.js
+  socket.on("incoming-call", (data) => {
+    log.info("Получено уведомление о звонке от asterisk-server", {
+      callId: data.id,
+      caller: data.caller_number,
+      receiver: data.receiver_number,
+      assignedUserId: data.assigned_user_id,
+      socketId: socket.id,
+    });
+
+    // Отправляем уведомление всем подключенным клиентам
+    io.emit("incoming-call", data);
+
+    log.success("Уведомление о звонке отправлено всем клиентам", {
+      callId: data.id,
+      connectedClientsCount: connectedClients.size,
+      connectedClientsKeys: Array.from(connectedClients.keys()),
+    });
+  });
+
+  // Тестовое событие
+  socket.on("test-event", (data) => {
+    log.info("Получено тестовое событие", {
+      message: data.message,
+      socketId: socket.id,
+    });
+
+    // Отправляем обратно клиенту
+    socket.emit("test-event", {
+      message: "Ответ от сервера: " + data.message,
+      timestamp: new Date().toISOString(),
+    });
+  });
 });
 
 // API маршруты
@@ -367,7 +417,13 @@ app.get("/api/calls", async (req, res) => {
              comp.name_companies as caller_company_name,
              cp.customer_name,
              cp.company as customer_company,
-             cp.email as customer_email
+             cp.email as customer_email,
+             CASE 
+               WHEN c.recording_status = 'available' THEN true
+               ELSE false
+             END as has_recording,
+             c.recording_status,
+             c.recording_reason
       FROM calls c
       LEFT JOIN users u_assigned ON c.assigned_user_id = u_assigned.id
       LEFT JOIN users u_answered ON c.answered_by_user_id = u_answered.id
@@ -468,6 +524,132 @@ app.get("/api/users/available", async (req, res) => {
   }
 });
 
+// API endpoint для получения аудиозаписи звонка
+app.get("/api/calls/:callId/recording", async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: "ID пользователя обязателен",
+      });
+    }
+
+    // Получаем информацию о звонке
+    const callResult = await safeQuery(
+      `SELECT * FROM calls WHERE id = $1 AND (assigned_user_id = $2 OR answered_by_user_id = $2)`,
+      [callId, userId],
+      "получение информации о звонке"
+    );
+
+    if (callResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Звонок не найден или у вас нет доступа",
+      });
+    }
+
+    const call = callResult.rows[0];
+
+    // Проверяем статус записи
+    if (call.recording_status !== "available") {
+      return res.status(404).json({
+        success: false,
+        error: "Запись звонка недоступна",
+        reason: call.recording_reason || "Запись не найдена",
+        status: call.recording_status,
+      });
+    }
+
+    if (!call.recording_url) {
+      return res.status(404).json({
+        success: false,
+        error: "Путь к записи не найден",
+      });
+    }
+
+    // Получаем аудиофайл из Asterisk через AMI
+    const { getRecordingAudio } = await import("./asterisk-server.js");
+    const audioBuffer = await getRecordingAudio(call.recording_url);
+
+    if (!audioBuffer) {
+      return res.status(404).json({
+        success: false,
+        error: "Не удалось получить аудиофайл",
+      });
+    }
+
+    // Отправляем аудиофайл
+    res.setHeader("Content-Type", "audio/wav");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="call-${callId}.wav"`
+    );
+    res.send(Buffer.from(audioBuffer));
+
+    log.success("Аудиозапись звонка отправлена", {
+      callId,
+      userId,
+      recordingPath: call.recording_url,
+    });
+  } catch (error) {
+    log.error("Ошибка при получении аудиозаписи", error);
+    res.status(500).json({
+      success: false,
+      error: "Не удалось получить аудиозапись",
+    });
+  }
+});
+
+// API endpoint для получения статуса записи звонка
+app.get("/api/calls/:callId/recording-status", async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: "ID пользователя обязателен",
+      });
+    }
+
+    // Получаем информацию о звонке
+    const callResult = await safeQuery(
+      `SELECT recording_status, recording_reason, recording_url FROM calls 
+       WHERE id = $1 AND (assigned_user_id = $2 OR answered_by_user_id = $2)`,
+      [callId, userId],
+      "получение статуса записи звонка"
+    );
+
+    if (callResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Звонок не найден или у вас нет доступа",
+      });
+    }
+
+    const call = callResult.rows[0];
+
+    res.json({
+      success: true,
+      data: {
+        status: call.recording_status,
+        reason: call.recording_reason,
+        hasRecording: call.recording_status === "available",
+      },
+    });
+  } catch (error) {
+    log.error("Ошибка при получении статуса записи", error);
+    res.status(500).json({
+      success: false,
+      error: "Не удалось получить статус записи",
+    });
+  }
+});
+
 // Проверка здоровья сервера
 app.get("/api/health", (req, res) => {
   res.json({
@@ -504,18 +686,59 @@ export const createNewCall = async (callData) => {
 
     activeCalls.set(callData.id, call);
 
-    // НЕ отправляем уведомления из createNewCall, поскольку они уже отправляются из обработчика incoming-call
-    log.info(
-      "createNewCall: уведомления обрабатываются в incoming-call обработчике",
-      {
+    // Отладочная информация
+    log.info("Отладочная информация о подключениях", {
+      callId: callData.id,
+      assignedUserId: assignedUser?.id || "не найден",
+      userFound: !!assignedUser,
+      connectedClientsSize: connectedClients.size,
+      userSocketsSize: userSockets.size,
+      connectedClientsKeys: Array.from(connectedClients.keys()),
+      userSocketsEntries: Array.from(userSockets.entries()),
+    });
+
+    // Отправляем уведомление пользователю, если он подключен
+    if (assignedUser && connectedClients.has(assignedUser.id)) {
+      const targetSocket = connectedClients.get(assignedUser.id);
+
+      targetSocket.emit("incoming-call", {
+        ...call,
+        id: callData.id,
+        status: "incoming",
+        assigned_user_id: assignedUser.id,
+      });
+
+      log.success("Уведомление о звонке отправлено пользователю", {
+        callId: callData.id,
+        userId: assignedUser.id,
+        userName: `${assignedUser.first_name} ${assignedUser.last_name}`,
+        phone: assignedUser.phone_number,
+      });
+    } else {
+      log.warning("Пользователь не подключен для получения уведомления", {
         callId: callData.id,
         assignedUserId: assignedUser?.id || "не найден",
         userFound: !!assignedUser,
         userConnected: assignedUser
           ? connectedClients.has(assignedUser.id)
           : false,
-      }
-    );
+        connectedClientsSize: connectedClients.size,
+        connectedClientsKeys: Array.from(connectedClients.keys()),
+      });
+
+      // Отправляем уведомление всем подключенным клиентам (fallback)
+      io.emit("incoming-call", {
+        ...call,
+        id: callData.id,
+        status: "incoming",
+        assigned_user_id: assignedUser?.id || null,
+      });
+
+      log.info("Уведомление отправлено всем подключенным клиентам (fallback)", {
+        callId: callData.id,
+        assignedUserId: assignedUser?.id || "не найден",
+      });
+    }
   } catch (error) {
     log.error("Ошибка при создании нового звонка", error);
   }
@@ -537,13 +760,13 @@ const checkPort = (port) => {
 const startServer = async () => {
   const PORT = 3771;
 
-  /* const isPortAvailable = await checkPort(PORT);
+  const isPortAvailable = await checkPort(PORT);
   if (!isPortAvailable) {
     log.error(
       `Порт ${PORT} уже используется. Остановите процесс на этом порту или измените порт.`
     );
     process.exit(1);
-  }*/
+  }
 
   server.listen(PORT, () => {
     log.success(`WebSocket сервер запущен на порту ${PORT}`);

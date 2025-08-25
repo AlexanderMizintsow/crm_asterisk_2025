@@ -23,11 +23,20 @@ const asteriskServer = spawn("node", ["asterisk-server.js"], {
 
 console.log("✅ Asterisk сервер запущен");
 
+// Запуск API сервера
+const apiServer = spawn("node", ["api-server.js"], {
+  cwd: __dirname,
+  stdio: "inherit",
+});
+
+console.log("✅ API сервер запущен на порту 3001");
+
 // Обработка завершения процессов
 process.on("SIGINT", () => {
   console.log("\n🛑 Завершение работы серверов...");
   websocketServer.kill("SIGINT");
   asteriskServer.kill("SIGINT");
+  apiServer.kill("SIGINT");
   process.exit(0);
 });
 
@@ -35,6 +44,7 @@ process.on("SIGTERM", () => {
   console.log("\n🛑 Завершение работы серверов...");
   websocketServer.kill("SIGTERM");
   asteriskServer.kill("SIGTERM");
+  apiServer.kill("SIGTERM");
   process.exit(0);
 });
 
@@ -45,6 +55,10 @@ websocketServer.on("error", (error) => {
 
 asteriskServer.on("error", (error) => {
   console.error("❌ Ошибка Asterisk сервера:", error);
+});
+
+apiServer.on("error", (error) => {
+  console.error("❌ Ошибка API сервера:", error);
 });
 
 console.log("📋 Для остановки серверов нажмите Ctrl+C");

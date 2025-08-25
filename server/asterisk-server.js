@@ -87,6 +87,16 @@ client.on("data", async (data) => {
 // Обработка входящего звонка
 const processIncomingCall = async () => {
   try {
+    // Проверяем, что у нас есть все необходимые данные
+    if (!currentCall.callerNumber || !currentCall.receiverNumber) {
+      amiLog.warning("Неполные данные звонка, пропускаем", {
+        caller: currentCall.callerNumber,
+        receiver: currentCall.receiverNumber,
+        channel: currentCall.channel,
+      });
+      return;
+    }
+
     amiLog.info("Обработка входящего звонка", {
       caller: currentCall.callerNumber,
       receiver: currentCall.receiverNumber,
@@ -134,9 +144,43 @@ const processIncomingCall = async () => {
         channel_id: currentCall.channel,
       };
 
-      // Импортируем функцию из websocket-server
-      const { createNewCall } = await import("./websocket-server.js");
-      await createNewCall(callData);
+      // Отправляем уведомление через WebSocket клиент
+      try {
+        const { io } = await import("socket.io-client");
+        const wsClient = io("http://localhost:3771");
+
+        wsClient.on("connect", () => {
+          amiLog.info("WebSocket клиент подключен для отправки уведомления");
+
+          // Отправляем уведомление всем подключенным клиентам
+          wsClient.emit("incoming-call", {
+            id: callData.id,
+            caller_number: callData.caller_number,
+            receiver_number: callData.receiver_number,
+            timestamp: callData.timestamp,
+            status: "incoming",
+            assigned_user_id: callData.assigned_user_id,
+            caller_company_id: callData.caller_company_id,
+            caller_company_name: callData.caller_company_name,
+          });
+
+          amiLog.success("Уведомление о звонке отправлено через WebSocket", {
+            callId: callData.id,
+            userId: callData.assigned_user_id,
+          });
+
+          // Отключаемся после отправки
+          setTimeout(() => {
+            wsClient.disconnect();
+          }, 1000);
+        });
+
+        wsClient.on("connect_error", (error) => {
+          amiLog.error("Ошибка подключения WebSocket клиента", error);
+        });
+      } catch (error) {
+        amiLog.error("Ошибка при отправке уведомления через WebSocket", error);
+      }
 
       amiLog.success("Уведомление о звонке отправлено пользователю", {
         callId: newCallId,
@@ -187,8 +231,11 @@ const processCallAnswered = async () => {
 
 // Обработка завершения звонка
 const processCallEnd = async () => {
-  if (!currentCall.callerNumber) {
-    amiLog.error("Звонок завершен без номера звонящего", currentCall);
+  if (!currentCall.callerNumber || !currentCall.receiverNumber) {
+    amiLog.warning("Звонок завершен с неполными данными, пропускаем", {
+      caller: currentCall.callerNumber,
+      receiver: currentCall.receiverNumber,
+    });
     currentCall = {};
     return;
   }
@@ -214,6 +261,11 @@ const processCallEnd = async () => {
         receiver: currentCall.receiverNumber,
         endedAt,
       });
+
+      // Получаем информацию о записи звонка
+      if (currentCall.channel) {
+        await getCallRecording(currentCall.channel, currentCall.callId);
+      }
     } else {
       // Если нет ID звонка, создаем новую запись (пропущенный звонок)
       const assignedUser = await getUserByPhone(currentCall.receiverNumber);
@@ -253,6 +305,134 @@ const processCallEnd = async () => {
     amiLog.error("Ошибка при обработке завершения звонка", error);
   } finally {
     currentCall = {};
+  }
+};
+
+// Функция получения информации о записи звонка
+const getCallRecording = async (channelId, callId) => {
+  try {
+    // Получаем информацию о записи через AMI
+    const recordingInfo = await getRecordingInfoFromAMI(channelId);
+
+    if (recordingInfo.success && recordingInfo.recordingPath) {
+      // Обновляем запись в БД с путем к аудиофайлу
+      await safeQuery(
+        `UPDATE calls SET recording_url = $1, recording_status = 'available' WHERE id = $2`,
+        [recordingInfo.recordingPath, callId],
+        "обновление пути к записи звонка"
+      );
+
+      amiLog.success("Информация о записи обновлена", {
+        callId,
+        recordingPath: recordingInfo.recordingPath,
+        channelId,
+      });
+    } else {
+      // Записываем причину отсутствия записи
+      const reason = recordingInfo.reason || "Неизвестная причина";
+      await safeQuery(
+        `UPDATE calls SET recording_status = 'unavailable', recording_reason = $1 WHERE id = $2`,
+        [reason, callId],
+        "обновление статуса записи звонка"
+      );
+
+      amiLog.warning("Запись звонка недоступна", {
+        callId,
+        channelId,
+        reason,
+      });
+    }
+  } catch (error) {
+    amiLog.error("Ошибка при получении информации о записи", error);
+
+    // В случае ошибки также обновляем статус
+    try {
+      await safeQuery(
+        `UPDATE calls SET recording_status = 'error', recording_reason = $1 WHERE id = $2`,
+        [error.message, callId],
+        "обновление статуса записи при ошибке"
+      );
+    } catch (dbError) {
+      amiLog.error("Ошибка при обновлении статуса записи", dbError);
+    }
+  }
+};
+
+// Получение информации о записи через AMI
+const getRecordingInfoFromAMI = (channelId) => {
+  return new Promise((resolve) => {
+    // Создаем уникальный ActionID для отслеживания ответа
+    const actionId = `getrecording_${Date.now()}`;
+    const command = `Action: GetVar\r\nActionID: ${actionId}\r\nChannel: ${channelId}\r\nVariable: RECORDED_FILE\r\n\r\n`;
+
+    // Временный обработчик для этого конкретного запроса
+    const handleResponse = (data) => {
+      const response = data.toString();
+
+      // Проверяем, что это ответ на наш запрос
+      if (response.includes(`ActionID: ${actionId}`)) {
+        if (response.includes("Value: ")) {
+          const recordingPath = response.split("Value: ")[1].trim();
+          client.removeListener("data", handleResponse);
+          resolve({ recordingPath, channelId, success: true });
+        } else if (response.includes("Response: Error")) {
+          client.removeListener("data", handleResponse);
+          resolve({
+            recordingPath: null,
+            channelId,
+            success: false,
+            reason: "Запись не найдена",
+          });
+        }
+      }
+    };
+
+    client.on("data", handleResponse);
+    client.write(command);
+
+    // Таймаут на случай, если ответ не придет
+    setTimeout(() => {
+      client.removeListener("data", handleResponse);
+      resolve({
+        recordingPath: null,
+        channelId,
+        success: false,
+        reason: "Таймаут ответа AMI",
+      });
+    }, 5000);
+  });
+};
+
+// Функция для получения аудиофайла записи через AMI
+const getRecordingAudio = async (recordingPath) => {
+  try {
+    // Если Asterisk доступен по HTTP, используем ARI
+    if (recordingPath.startsWith("http")) {
+      const response = await fetch(recordingPath);
+      return await response.arrayBuffer();
+    }
+
+    // Если путь относительный, добавляем базовый путь Asterisk
+    if (!recordingPath.startsWith("/") && !recordingPath.startsWith("http")) {
+      // Предполагаем, что записи хранятся в /var/spool/asterisk/monitor/
+      recordingPath = `/var/spool/asterisk/monitor/${recordingPath}`;
+    }
+
+    // Читаем файл напрямую с сервера Asterisk
+    // В реальной среде здесь может быть SSH или другой способ доступа
+    const fs = await import("fs");
+
+    // Проверяем существование файла
+    if (!fs.existsSync(recordingPath)) {
+      amiLog.warning("Файл записи не найден", { recordingPath });
+      return null;
+    }
+
+    const audioBuffer = fs.readFileSync(recordingPath);
+    return audioBuffer;
+  } catch (error) {
+    amiLog.error("Ошибка при получении аудиофайла", error);
+    return null;
   }
 };
 
