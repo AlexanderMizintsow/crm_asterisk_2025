@@ -6,6 +6,89 @@ import {
   getUserByPhone,
   getCompanyByPhone,
 } from "./shared-functions.js";
+import { io } from "socket.io-client";
+
+// Функция отправки уведомления о завершении звонка
+const sendCallEndedNotification = async (callId, callData) => {
+  // Не отправляем уведомления с null callId
+  if (!callId) {
+    amiLog.warning(
+      "Попытка отправить уведомление о завершении звонка без callId",
+      {
+        callData: callData,
+      }
+    );
+    return;
+  }
+
+  try {
+    const socket = io("http://localhost:3771");
+
+    await new Promise((resolve, reject) => {
+      socket.on("connect", () => {
+        socket.emit("asterisk-call-ended", {
+          callId: callId,
+          endedAt: new Date().toISOString(),
+          duration: callData.duration || 0,
+          status: "completed",
+        });
+        socket.disconnect();
+        resolve();
+      });
+
+      socket.on("connect_error", (error) => {
+        amiLog.error(
+          "Ошибка подключения к WebSocket серверу для отправки call-ended",
+          error
+        );
+        reject(error);
+      });
+
+      setTimeout(() => {
+        reject(new Error("Таймаут подключения к WebSocket серверу"));
+      }, 5000);
+    });
+  } catch (error) {
+    amiLog.error("Ошибка отправки уведомления call-ended", error);
+  }
+};
+
+// Функция отправки уведомления о пропущенном звонке
+const sendMissedCallNotification = async (callData) => {
+  try {
+    const socket = io("http://localhost:3771");
+
+    await new Promise((resolve, reject) => {
+      socket.on("connect", () => {
+        socket.emit("asterisk-missed-call", {
+          id: callData.id || null,
+          caller_number: callData.callerNumber,
+          receiver_number: callData.receiverNumber,
+          timestamp: callData.timestamp,
+          status: "missed",
+          assigned_user_id:
+            callData.assigned_user_id || callData.assignedUserId || null,
+        });
+        socket.disconnect();
+        resolve();
+      });
+
+      socket.on("connect_error", (error) => {
+        amiLog.error(
+          "Ошибка подключения к WebSocket серверу для отправки missed-call-created",
+          error
+        );
+        reject(error);
+      });
+
+      setTimeout(() => {
+        reject(new Error("Таймаут подключения к WebSocket серверу"));
+      }, 5000);
+    });
+  } catch (error) {
+    amiLog.error("Ошибка отправки уведомления missed-call-created", error);
+  }
+};
 
 // Настройки Asterisk AMI
 const amiHost = "192.168.57.165";
@@ -15,6 +98,8 @@ const amiPassword = "S2s14q98svf32a";
 
 const client = new net.Socket();
 let currentCall = {};
+// Map для хранения данных звонков по каналам
+const callDataMap = new Map();
 
 // Логирование для AMI
 const amiLog = {
@@ -53,30 +138,243 @@ client.on("data", async (data) => {
   for (const line of response) {
     try {
       if (line.startsWith("Event: Newchannel")) {
-        currentCall.channel = line.split(": ")[1];
-        currentCall.timestamp = new Date().toISOString();
-        amiLog.info("Обнаружен новый канал", { channel: currentCall.channel });
+        // Ищем строку с Channel: для получения реального канала
+        let channel = null;
+        let uniqueId = null;
+        for (let i = 0; i < response.length; i++) {
+          if (response[i].startsWith("Channel:")) {
+            channel = response[i].split(": ")[1];
+          }
+          if (response[i].startsWith("Uniqueid:")) {
+            uniqueId = response[i].split(": ")[1];
+          }
+        }
+
+        if (!channel || !uniqueId) {
+          amiLog.warning(
+            "Не удалось найти канал или Uniqueid в событии Newchannel",
+            {
+              channel: channel,
+              uniqueId: uniqueId,
+              response: response,
+            }
+          );
+          return;
+        }
+
+        // Создаем данные для нового канала
+        const callData = {
+          channel: channel,
+          uniqueId: uniqueId,
+          timestamp: new Date().toISOString(),
+          processed: false,
+        };
+        callDataMap.set(channel, callData);
+        currentCall = callData;
+
+        amiLog.info("Обнаружен новый канал, создали данные", {
+          channel: channel,
+          uniqueId: uniqueId,
+          callData: { ...callData },
+          totalCalls: callDataMap.size,
+        });
       } else if (line.startsWith("CallerIDNum:")) {
-        currentCall.callerNumber = line.split(": ")[1];
+        const callerNumber = line.split(": ")[1];
+
+        // Ищем канал и Uniqueid в текущем событии
+        let channel = null;
+        let uniqueId = null;
+        for (let i = 0; i < response.length; i++) {
+          if (response[i].startsWith("Channel:")) {
+            channel = response[i].split(": ")[1];
+          }
+          if (response[i].startsWith("Uniqueid:")) {
+            uniqueId = response[i].split(": ")[1];
+          }
+        }
+
+        // Если канал не найден в событии, ищем по Uniqueid
+        if (!channel && uniqueId) {
+          for (const [existingChannel, existingData] of callDataMap.entries()) {
+            if (existingData.uniqueId === uniqueId) {
+              channel = existingChannel;
+              break;
+            }
+          }
+        }
+
+        // Если все еще не найден, используем последний созданный
+        if (!channel) {
+          channel = Array.from(callDataMap.keys()).pop();
+        }
+
+        if (!channel || !callDataMap.has(channel)) {
+          amiLog.warning("Канал не найден для CallerIDNum", {
+            callerNumber: callerNumber,
+            uniqueId: uniqueId,
+            availableChannels: Array.from(callDataMap.keys()),
+            response: response,
+          });
+          return;
+        }
+
+        // Проверяем, что Uniqueid совпадает (если есть)
+        const callData = callDataMap.get(channel);
+        if (uniqueId && callData.uniqueId && uniqueId !== callData.uniqueId) {
+          amiLog.warning("Uniqueid не совпадает для CallerIDNum", {
+            channel: channel,
+            callerNumber: callerNumber,
+            eventUniqueId: uniqueId,
+            callDataUniqueId: callData.uniqueId,
+          });
+          return;
+        }
+        if (callData.processed) {
+          amiLog.warning("Попытка обновить данные уже обработанного звонка", {
+            channel: channel,
+            newCallerNumber: callerNumber,
+            callData: { ...callData },
+          });
+          return;
+        }
+
+        callData.callerNumber = callerNumber;
+        currentCall = callData;
+
         amiLog.info("Определен номер звонящего", {
-          callerNumber: currentCall.callerNumber,
+          channel: channel,
+          callerNumber: callerNumber,
+          callData: { ...callData },
         });
       } else if (line.startsWith("Exten:")) {
-        currentCall.receiverNumber = line.split(": ")[1];
+        const receiverNumber = line.split(": ")[1];
+
+        // Ищем канал и Uniqueid в текущем событии
+        let channel = null;
+        let uniqueId = null;
+        for (let i = 0; i < response.length; i++) {
+          if (response[i].startsWith("Channel:")) {
+            channel = response[i].split(": ")[1];
+          }
+          if (response[i].startsWith("Uniqueid:")) {
+            uniqueId = response[i].split(": ")[1];
+          }
+        }
+
+        // Если канал не найден в событии, ищем по Uniqueid
+        if (!channel && uniqueId) {
+          for (const [existingChannel, existingData] of callDataMap.entries()) {
+            if (existingData.uniqueId === uniqueId) {
+              channel = existingChannel;
+              break;
+            }
+          }
+        }
+
+        // Если все еще не найден, используем последний созданный
+        if (!channel) {
+          channel = Array.from(callDataMap.keys()).pop();
+        }
+
+        if (!channel || !callDataMap.has(channel)) {
+          amiLog.warning("Канал не найден для Exten", {
+            receiverNumber: receiverNumber,
+            uniqueId: uniqueId,
+            availableChannels: Array.from(callDataMap.keys()),
+            response: response,
+          });
+          return;
+        }
+
+        // Проверяем, что Uniqueid совпадает (если есть)
+        const callData = callDataMap.get(channel);
+        if (uniqueId && callData.uniqueId && uniqueId !== callData.uniqueId) {
+          amiLog.warning("Uniqueid не совпадает для Exten", {
+            channel: channel,
+            receiverNumber: receiverNumber,
+            eventUniqueId: uniqueId,
+            callDataUniqueId: callData.uniqueId,
+          });
+          return;
+        }
+        if (callData.processed) {
+          amiLog.warning("Попытка обновить данные уже обработанного звонка", {
+            channel: channel,
+            newReceiverNumber: receiverNumber,
+            callData: { ...callData },
+          });
+          return;
+        }
+
+        callData.receiverNumber = receiverNumber;
+        currentCall = callData;
+
         amiLog.info("Определен номер получателя", {
-          receiverNumber: currentCall.receiverNumber,
+          channel: channel,
+          receiverNumber: receiverNumber,
+          callData: { ...callData },
         });
 
         // Когда получили полную информацию о звонке, создаем уведомление
-        if (currentCall.callerNumber && currentCall.receiverNumber) {
-          await processIncomingCall();
+        if (
+          callData.callerNumber &&
+          callData.receiverNumber &&
+          !callData.processed
+        ) {
+          await processIncomingCall(channel);
         }
       } else if (line.startsWith("Event: Answer")) {
         // Звонок принят
-        await processCallAnswered();
+        let channel = null;
+        let uniqueId = null;
+        for (let i = 0; i < response.length; i++) {
+          if (response[i].startsWith("Channel:")) {
+            channel = response[i].split(": ")[1];
+          }
+          if (response[i].startsWith("Uniqueid:")) {
+            uniqueId = response[i].split(": ")[1];
+          }
+        }
+        if (channel) {
+          await processCallAnswered(channel, uniqueId);
+        }
       } else if (line.startsWith("Event: Hangup")) {
         // Звонок завершен
-        await processCallEnd();
+        let channel = null;
+        let uniqueId = null;
+        let callerIdNum = null;
+        let hangupCause = null;
+        for (let i = 0; i < response.length; i++) {
+          if (response[i].startsWith("Channel:")) {
+            channel = response[i].split(": ")[1];
+          }
+          if (response[i].startsWith("Uniqueid:")) {
+            uniqueId = response[i].split(": ")[1];
+          }
+          if (response[i].startsWith("CallerIDNum:")) {
+            callerIdNum = response[i].split(": ")[1];
+          }
+          if (response[i].startsWith("Cause:")) {
+            hangupCause = response[i].split(": ")[1];
+          }
+        }
+
+        // Если есть CallerIDNum в событии Hangup, обновляем данные канала
+        if (channel && callerIdNum) {
+          const callData = callDataMap.get(channel);
+          if (callData && !callData.callerNumber) {
+            callData.callerNumber = callerIdNum;
+            amiLog.info("Обновлен номер звонящего из события Hangup", {
+              channel: channel,
+              uniqueId: uniqueId,
+              callerNumber: callerIdNum,
+            });
+          }
+        }
+
+        if (channel) {
+          await processCallEnd(channel, uniqueId, hangupCause);
+        }
       }
     } catch (error) {
       amiLog.error("Ошибка при обработке AMI события", error);
@@ -85,25 +383,42 @@ client.on("data", async (data) => {
 });
 
 // Обработка входящего звонка
-const processIncomingCall = async () => {
+const processIncomingCall = async (channel) => {
   try {
+    const callData = callDataMap.get(channel);
+    if (!callData) {
+      amiLog.error("Данные звонка не найдены для канала", { channel });
+      return;
+    }
+
     // Проверяем, что у нас есть все необходимые данные
-    if (!currentCall.callerNumber || !currentCall.receiverNumber) {
+    if (!callData.callerNumber || !callData.receiverNumber) {
       amiLog.warning("Неполные данные звонка, пропускаем", {
-        caller: currentCall.callerNumber,
-        receiver: currentCall.receiverNumber,
-        channel: currentCall.channel,
+        caller: callData.callerNumber,
+        receiver: callData.receiverNumber,
+        channel: callData.channel,
+      });
+      return;
+    }
+
+    // Проверяем, что номера звонящего и получателя разные
+    if (callData.callerNumber === callData.receiverNumber) {
+      amiLog.warning("Номера звонящего и получателя одинаковые, пропускаем", {
+        caller: callData.callerNumber,
+        receiver: callData.receiverNumber,
+        channel: callData.channel,
       });
       return;
     }
 
     amiLog.info("Обработка входящего звонка", {
-      caller: currentCall.callerNumber,
-      receiver: currentCall.receiverNumber,
+      channel: channel,
+      caller: callData.callerNumber,
+      receiver: callData.receiverNumber,
     });
 
-    const assignedUser = await getUserByPhone(currentCall.receiverNumber);
-    const callerCompany = await getCompanyByPhone(currentCall.callerNumber);
+    const assignedUser = await getUserByPhone(callData.receiverNumber);
+    const callerCompany = await getCompanyByPhone(callData.callerNumber);
 
     // Создаем запись в БД со статусом "incoming"
     const result = await safeQuery(
@@ -117,31 +432,35 @@ const processIncomingCall = async () => {
         channel_id
       ) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
       [
-        currentCall.callerNumber,
-        currentCall.receiverNumber,
-        currentCall.timestamp,
+        callData.callerNumber,
+        callData.receiverNumber,
+        callData.timestamp,
         "incoming",
         assignedUser?.id || null,
         callerCompany?.id || null,
-        currentCall.channel,
+        callData.channel,
       ],
       "создание записи входящего звонка"
     );
 
     const newCallId = result.rows[0].id;
 
+    // Обновляем callData с новым ID
+    callData.id = newCallId;
+    callData.processed = true;
+
     // Отправляем уведомление пользователю через WebSocket
     if (assignedUser) {
-      const callData = {
+      const wsCallData = {
         id: newCallId,
-        caller_number: currentCall.callerNumber,
-        receiver_number: currentCall.receiverNumber,
-        timestamp: currentCall.timestamp,
+        caller_number: callData.callerNumber,
+        receiver_number: callData.receiverNumber,
+        timestamp: callData.timestamp,
         status: "incoming",
         assigned_user_id: assignedUser.id,
         caller_company_id: callerCompany?.id || null,
         caller_company_name: callerCompany?.name_companies || null,
-        channel_id: currentCall.channel,
+        channel_id: callData.channel,
       };
 
       // Отправляем уведомление через WebSocket клиент
@@ -153,20 +472,20 @@ const processIncomingCall = async () => {
           amiLog.info("WebSocket клиент подключен для отправки уведомления");
 
           // Отправляем уведомление всем подключенным клиентам
-          wsClient.emit("incoming-call", {
-            id: callData.id,
-            caller_number: callData.caller_number,
-            receiver_number: callData.receiver_number,
-            timestamp: callData.timestamp,
+          wsClient.emit("asterisk-incoming-call", {
+            id: wsCallData.id,
+            caller_number: wsCallData.caller_number,
+            receiver_number: wsCallData.receiver_number,
+            timestamp: wsCallData.timestamp,
             status: "incoming",
-            assigned_user_id: callData.assigned_user_id,
-            caller_company_id: callData.caller_company_id,
-            caller_company_name: callData.caller_company_name,
+            assigned_user_id: wsCallData.assigned_user_id,
+            caller_company_id: wsCallData.caller_company_id,
+            caller_company_name: wsCallData.caller_company_name,
           });
 
           amiLog.success("Уведомление о звонке отправлено через WebSocket", {
-            callId: callData.id,
-            userId: callData.assigned_user_id,
+            callId: newCallId,
+            userId: wsCallData.assigned_user_id,
           });
 
           // Отключаемся после отправки
@@ -184,6 +503,7 @@ const processIncomingCall = async () => {
 
       amiLog.success("Уведомление о звонке отправлено пользователю", {
         callId: newCallId,
+        channel: channel,
         userId: assignedUser.id,
         userName: `${assignedUser.first_name} ${assignedUser.last_name}`,
       });
@@ -195,16 +515,46 @@ const processIncomingCall = async () => {
     }
 
     // Сохраняем ID звонка для последующего обновления
-    currentCall.callId = newCallId;
+    callData.callId = newCallId;
+
+    // Помечаем звонок как обработанный
+    callData.processed = true;
+
+    amiLog.info("Звонок обработан и помечен как processed", {
+      callId: newCallId,
+      channel: channel,
+      callData: { ...callData },
+    });
   } catch (error) {
     amiLog.error("Ошибка при обработке входящего звонка", error);
   }
 };
 
 // Обработка принятого звонка
-const processCallAnswered = async () => {
-  if (!currentCall.callId) {
-    amiLog.warning("Нет ID звонка для обновления статуса");
+const processCallAnswered = async (channel, uniqueId) => {
+  const callData = callDataMap.get(channel);
+  if (!callData) {
+    amiLog.warning("Данные звонка не найдены для канала", { channel });
+    return;
+  }
+
+  // Проверяем Uniqueid, если он есть
+  if (uniqueId && callData.uniqueId && uniqueId !== callData.uniqueId) {
+    amiLog.warning("Uniqueid не совпадает для Answer", {
+      channel: channel,
+      eventUniqueId: uniqueId,
+      callDataUniqueId: callData.uniqueId,
+    });
+    return;
+  }
+
+  amiLog.info("Обработка принятого звонка", {
+    channel: channel,
+    callData: { ...callData },
+  });
+
+  if (!callData.callId) {
+    amiLog.warning("Нет ID звонка для обновления статуса", { channel });
     return;
   }
 
@@ -216,12 +566,13 @@ const processCallAnswered = async () => {
        status = 'answered', 
        answered_at = $1 
        WHERE id = $2`,
-      [answeredAt, currentCall.callId],
+      [answeredAt, callData.callId],
       "обновление статуса звонка на 'answered'"
     );
 
     amiLog.success("Звонок отмечен как принятый", {
-      callId: currentCall.callId,
+      callId: callData.callId,
+      channel: channel,
       answeredAt,
     });
   } catch (error) {
@@ -230,48 +581,156 @@ const processCallAnswered = async () => {
 };
 
 // Обработка завершения звонка
-const processCallEnd = async () => {
-  if (!currentCall.callerNumber || !currentCall.receiverNumber) {
-    amiLog.warning("Звонок завершен с неполными данными, пропускаем", {
-      caller: currentCall.callerNumber,
-      receiver: currentCall.receiverNumber,
+const processCallEnd = async (channel, uniqueId, hangupCause) => {
+  const callData = callDataMap.get(channel);
+  if (!callData) {
+    amiLog.warning("Данные звонка не найдены для канала", { channel });
+    return;
+  }
+
+  // Проверяем Uniqueid, если он есть
+  if (uniqueId && callData.uniqueId && uniqueId !== callData.uniqueId) {
+    amiLog.warning("Uniqueid не совпадает для Hangup", {
+      channel: channel,
+      eventUniqueId: uniqueId,
+      callDataUniqueId: callData.uniqueId,
     });
-    currentCall = {};
+    return;
+  }
+
+  amiLog.info("Обработка завершения звонка", {
+    channel: channel,
+    callData: { ...callData },
+  });
+
+  if (!callData.callerNumber || !callData.receiverNumber) {
+    amiLog.warning("Звонок завершен с неполными данными, пропускаем", {
+      channel: channel,
+      caller: callData.callerNumber,
+      receiver: callData.receiverNumber,
+    });
+    callDataMap.delete(channel);
     return;
   }
 
   try {
     const endedAt = new Date().toISOString();
 
-    if (currentCall.callId) {
-      // Обновляем существующую запись
-      await safeQuery(
-        `UPDATE calls SET 
-         status = 'completed',
-         ended_at = $1,
-         duration = EXTRACT(EPOCH FROM ($1::timestamp - accepted_at::timestamp))
-         WHERE id = $2`,
-        [endedAt, currentCall.callId],
-        "завершение звонка"
+    if (callData.callId) {
+      // Проверяем текущий статус звонка
+      const callStatusResult = await safeQuery(
+        `SELECT status, answered_at FROM calls WHERE id = $1`,
+        [callData.callId],
+        "проверка статуса звонка"
       );
 
-      amiLog.success("Звонок завершен", {
-        callId: currentCall.callId,
-        caller: currentCall.callerNumber,
-        receiver: currentCall.receiverNumber,
-        endedAt,
-      });
+      if (callStatusResult.rows.length > 0) {
+        const currentStatus = callStatusResult.rows[0].status;
+        const answeredAt = callStatusResult.rows[0].answered_at;
 
-      // Получаем информацию о записи звонка
-      if (currentCall.channel) {
-        await getCallRecording(currentCall.channel, currentCall.callId);
+        if (currentStatus === "incoming" && !answeredAt) {
+          // Проверяем причину завершения для определения пропущенного звонка
+          const isMissedCall =
+            hangupCause === "NO ANSWER" ||
+            hangupCause === "16" || // NO ANSWER в Asterisk
+            hangupCause === "17" || // USER BUSY
+            hangupCause === "19" || // NO USER RESPONSE
+            hangupCause === "21" || // CALL REJECTED
+            hangupCause === "102" || // RECOVERY ON TIMER EXPIRE
+            !hangupCause; // Если причина не указана, считаем пропущенным
+
+          if (isMissedCall) {
+            // Звонок не был принят - помечаем как пропущенный
+            await safeQuery(
+              `UPDATE calls SET 
+               status = 'missed',
+               ended_at = $1
+               WHERE id = $2`,
+              [endedAt, callData.callId],
+              "помечаем звонок как пропущенный"
+            );
+
+            amiLog.success("Звонок помечен как пропущенный", {
+              callId: callData.callId,
+              channel: channel,
+              caller: callData.callerNumber,
+              receiver: callData.receiverNumber,
+              endedAt,
+              hangupCause,
+            });
+
+            // Отправляем уведомление о пропущенном звонке
+            await sendMissedCallNotification({
+              ...callData,
+              id: callData.callId,
+            });
+          } else {
+            // Звонок был завершен по другой причине (например, отменен)
+            await safeQuery(
+              `UPDATE calls SET 
+               status = 'cancelled',
+               ended_at = $1
+               WHERE id = $2`,
+              [endedAt, callData.callId],
+              "помечаем звонок как отмененный"
+            );
+
+            amiLog.success("Звонок помечен как отмененный", {
+              callId: callData.callId,
+              channel: channel,
+              caller: callData.callerNumber,
+              receiver: callData.receiverNumber,
+              endedAt,
+              hangupCause,
+            });
+          }
+        } else {
+          // Звонок был принят - завершаем нормально
+          await safeQuery(
+            `UPDATE calls SET 
+             status = 'completed',
+             ended_at = $1,
+             duration = EXTRACT(EPOCH FROM ($1::timestamp - accepted_at::timestamp))
+             WHERE id = $2`,
+            [endedAt, callData.callId],
+            "завершение звонка"
+          );
+
+          amiLog.success("Звонок завершен", {
+            callId: callData.callId,
+            channel: channel,
+            caller: callData.callerNumber,
+            receiver: callData.receiverNumber,
+            endedAt,
+          });
+
+          // Отправляем уведомление о завершении звонка
+          await sendCallEndedNotification(callData.callId, callData);
+        }
+
+        // Получаем информацию о записи звонка
+        if (callData.channel) {
+          await getCallRecording(callData.channel, callData.callId);
+        }
       }
     } else {
-      // Если нет ID звонка, создаем новую запись (пропущенный звонок)
-      const assignedUser = await getUserByPhone(currentCall.receiverNumber);
-      const callerCompany = await getCompanyByPhone(currentCall.callerNumber);
+      // Если нет ID звонка, создаем новую запись
+      const assignedUser = await getUserByPhone(callData.receiverNumber);
+      const callerCompany = await getCompanyByPhone(callData.callerNumber);
 
-      await safeQuery(
+      // Определяем статус на основе причины завершения
+      const isMissedCall =
+        hangupCause === "NO ANSWER" ||
+        hangupCause === "16" || // NO ANSWER в Asterisk
+        hangupCause === "17" || // USER BUSY
+        hangupCause === "19" || // NO USER RESPONSE
+        hangupCause === "21" || // CALL REJECTED
+        hangupCause === "102" || // RECOVERY ON TIMER EXPIRE
+        !hangupCause; // Если причина не указана, считаем пропущенным
+
+      const callStatus = isMissedCall ? "missed" : "cancelled";
+
+      const result = await safeQuery(
         `INSERT INTO calls (
           caller_number, 
           receiver_number, 
@@ -281,30 +740,78 @@ const processCallEnd = async () => {
           caller_company_id,
           channel_id,
           ended_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
         [
-          currentCall.callerNumber,
-          currentCall.receiverNumber,
-          currentCall.timestamp,
-          "missed",
+          callData.callerNumber,
+          callData.receiverNumber,
+          callData.timestamp,
+          callStatus,
           assignedUser?.id || null,
           callerCompany?.id || null,
-          currentCall.channel,
+          callData.channel,
           endedAt,
         ],
-        "запись пропущенного звонка"
+        `запись ${callStatus} звонка`
       );
 
-      amiLog.success("Пропущенный звонок записан", {
-        caller: currentCall.callerNumber,
-        receiver: currentCall.receiverNumber,
-        endedAt,
-      });
+      const newCallId = result.rows[0].id;
+
+      amiLog.success(
+        `${
+          callStatus === "missed" ? "Пропущенный" : "Отмененный"
+        } звонок записан`,
+        {
+          callId: newCallId,
+          channel: channel,
+          caller: callData.callerNumber,
+          receiver: callData.receiverNumber,
+          endedAt,
+          hangupCause,
+        }
+      );
+
+      // Отправляем уведомление только для пропущенных звонков
+      if (isMissedCall) {
+        await sendMissedCallNotification({
+          ...callData,
+          id: newCallId,
+        });
+      }
     }
   } catch (error) {
     amiLog.error("Ошибка при обработке завершения звонка", error);
   } finally {
-    currentCall = {};
+    // Отправляем call-ended уведомление только если звонок не был обработан выше
+    // и у нас есть callId
+    try {
+      if (callData.callId && !callData.processed) {
+        await sendCallEndedNotification(callData.callId, {
+          callerNumber: callData.callerNumber,
+          receiverNumber: callData.receiverNumber,
+          timestamp: callData.timestamp,
+          duration: 0,
+          status: "completed",
+        });
+      }
+    } catch (notificationError) {
+      amiLog.error(
+        "Ошибка отправки дополнительного уведомления call-ended",
+        notificationError
+      );
+    }
+
+    amiLog.info("Сброс данных звонка после завершения", {
+      channel: channel,
+      finalCallData: { ...callData },
+    });
+
+    // Удаляем канал с задержкой, чтобы обработать все события
+    setTimeout(() => {
+      if (callDataMap.has(channel)) {
+        callDataMap.delete(channel);
+        amiLog.info("Канал удален из Map", { channel });
+      }
+    }, 5000); // 5 секунд задержки
   }
 };
 

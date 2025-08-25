@@ -4,33 +4,35 @@ console.log("🔧 Настройка базы данных для тестиро
 
 const setupDatabase = async () => {
   try {
-    // 1. Создаем пользователя Иванова
-    log.info("Создание пользователя Иванова...");
+    // 1. Создаем пользователя Ирину Алигаджиеву (ID 17)
+    log.info("Создание пользователя Ирина Алигаджиева...");
 
     const userResult = await safeQuery(
-      `INSERT INTO users (first_name, last_name, username, password, email, status) 
-       VALUES ($1, $2, $3, $4, $5, $6) 
-       ON CONFLICT DO NOTHING 
+      `INSERT INTO users (id, first_name, last_name, username, password, email, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) 
+       ON CONFLICT (id) DO UPDATE SET 
+         first_name = EXCLUDED.first_name,
+         last_name = EXCLUDED.last_name,
+         username = EXCLUDED.username,
+         email = EXCLUDED.email,
+         status = EXCLUDED.status
        RETURNING id`,
-      ["Иван", "Иванов", "ivanov", "password123", "ivanov@test.com", "active"],
-      "создание пользователя Иванов"
+      [
+        17,
+        "Ирина",
+        "Алигаджиева",
+        "aligadzhieva",
+        "password123",
+        "aligadzhieva@test.com",
+        "active",
+      ],
+      "создание пользователя Ирина Алигаджиева"
     );
 
-    let userId;
-    if (userResult.rows.length > 0) {
-      userId = userResult.rows[0].id;
-      log.success("Пользователь Иванов создан", { userId });
-    } else {
-      const existingUser = await safeQuery(
-        "SELECT id FROM users WHERE first_name = $1 AND last_name = $2",
-        ["Иван", "Иванов"],
-        "поиск существующего пользователя"
-      );
-      userId = existingUser.rows[0].id;
-      log.info("Пользователь Иванов уже существует", { userId });
-    }
+    let userId = 17;
+    log.success("Пользователь Ирина Алигаджиева создан/обновлен", { userId });
 
-    // 2. Привязываем номер 777 к Иванову
+    // 2. Привязываем номер 777 к Ирине
     log.info("Привязка номера 777 к пользователю...");
 
     // Сначала удаляем старую привязку номера 777
@@ -45,10 +47,10 @@ const setupDatabase = async () => {
       `INSERT INTO user_phones (user_id, phone_number, phone_type) 
        VALUES ($1, $2, $3)`,
       [userId, "777", "extension"],
-      "привязка номера 777 к Иванову"
+      "привязка номера 777 к Ирине"
     );
 
-    log.success("Номер 777 привязан к Иванову", { userId, phoneNumber: "777" });
+    log.success("Номер 777 привязан к Ирине", { userId, phoneNumber: "777" });
 
     // 2.1. Создаем второго пользователя (Петр Петров)
     log.info("Создание второго пользователя (Петр Петров)...");
@@ -192,8 +194,10 @@ const setupDatabase = async () => {
       console.log("\n🚀 Для тестирования запустите:");
       console.log("1. npm run servers");
       console.log("2. npm run dev");
-      console.log("3. node server/testMultipleUsers.js (тест изоляции)");
-      console.log("4. Откройте: http://localhost:5179");
+      console.log("3. Откройте: http://localhost:5173");
+      console.log(
+        "\n📝 Примечание: В App.jsx используется CURRENT_USER_ID = 17 (Ирина Алигаджиева)"
+      );
     } else {
       log.error("❌ Ошибка: не все пользователи найдены");
     }
